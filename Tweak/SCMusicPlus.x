@@ -513,6 +513,59 @@ static NSData *SCMCSanitizedConfigurationData(NSData *data) {
 }
 %end
 
+%hook FeatureFlagService
++ (NSString *)devIosUpdatePromptVersionsValue {
+	return @"";
+}
+%end
+
+%hook _TtC12SCFoundation7Version
+- (NSString *)shortVersionString {
+	return @"99.99.0";
+}
+%end
+
+%hook UserAgentFormatter
++ (NSString *)formatUserAgentWithBundle:(NSBundle *)bundle device:(UIDevice *)device {
+	NSString *original = %orig;
+	NSString *realVersion = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+	if (realVersion.length) {
+		original = [original stringByReplacingOccurrencesOfString:realVersion withString:@"99.99.0"];
+	}
+	NSString *realOS = [device systemVersion];
+	if (realOS.length) {
+		original = [original stringByReplacingOccurrencesOfString:realOS withString:@"99.99.0"];
+	}
+	NSString *realBuild = [bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
+	if (realBuild.length) {
+		original = [original stringByReplacingOccurrencesOfString:realBuild withString:@"9999999"];
+	}
+	return original;
+}
+%end
+
+%hook NSMutableURLRequest
+- (void)setValue:(NSString *)value forHTTPHeaderField:(NSString *)field {
+	if ([field isEqualToString:@"App-Version"]) {
+		value = @"99.99.0";
+	} else if ([field isEqualToString:@"User-Agent"]) {
+		NSString *realVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+		if (realVersion.length) {
+			value = [value stringByReplacingOccurrencesOfString:realVersion withString:@"99.99.0"];
+		}
+		NSString *realOS = [[UIDevice currentDevice] systemVersion];
+		if (realOS.length) {
+			value = [value stringByReplacingOccurrencesOfString:realOS withString:@"99.99.0"];
+		}
+		NSString *realBuild = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
+		if (realBuild.length) {
+			value = [value stringByReplacingOccurrencesOfString:realBuild withString:@"9999999"];
+		}
+	}
+	%orig;
+}
+%end
+
 %hook PlayQueueItemTrackEntity
 - (bool)isMonetizable {
 	return NO;
@@ -682,6 +735,10 @@ static NSData *SCMCSanitizedConfigurationData(NSData *data) {
 		UpsellManager = objc_getClass("SoundCloud.UpsellManager"),
 		UserFeaturesService = objc_getClass("SoundCloud.UserFeaturesService"),
 		AdsRequestPermitter = objc_getClass("SoundCloud.AdsRequestPermitter"),
+		FeatureFlagService = objc_getClass("FeatureFlagService"),
+		_TtC12SCFoundation7Version = objc_getClass("_TtC12SCFoundation7Version"),
+		UserAgentFormatter = objc_getClass("UserAgentFormatter"),
+		NSMutableURLRequest = objc_getClass("NSMutableURLRequest"),
 		PlayQueueItemTrackEntity =
 			objc_getClass("SoundCloud.PlayQueueItemTrackEntity"),
 		GoUpsellButtonViewWrapper =
