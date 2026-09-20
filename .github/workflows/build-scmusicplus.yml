@@ -7,13 +7,17 @@ on:
         description: 'URL directe de l''IPA SoundCloud DÉCHIFFRÉ (lien Google Drive ou direct)'
         required: true
         type: string
+      deb_url:
+        description: 'URL du .deb SCMusicPlus (lien Google Drive ou direct)'
+        required: true
+        type: string
       release_tag:
         description: 'Tag de la release (ex: 8.73.0)'
         required: true
         default: '8.73.0'
         type: string
       remove_extensions:
-        description: 'Supprimer les extensions (App Extensions, Watch) - réduit la taille'
+        description: 'Supprimer les extensions (App Extensions, Watch)'
         required: true
         default: true
         type: boolean
@@ -53,23 +57,20 @@ jobs:
           echo "SC_VERSION=$VERSION" >> $GITHUB_ENV
           rm -rf Payload_tmp
 
-      - name: Download SCMusicPlus Tweak (rootless)
+      - name: Download SCMusicPlus Tweak
         run: |
-          # Récupère l'URL du .deb rootless depuis la dernière release de waruhachi/SCMusicPlus
-          DEB_URL=$(curl -s https://api.github.com/repos/waruhachi/SCMusicPlus/releases/latest \
-            | grep "browser_download_url" \
-            | grep "iphoneos-arm64" \
-            | grep -v "arm64e" \
-            | cut -d '"' -f 4)
-          if [ -z "$DEB_URL" ]; then
-            echo "::error::Impossible de trouver le .deb rootless dans la release"
-            exit 1
+          URL="${{ inputs.deb_url }}"
+          ID=$(echo "$URL" | sed -n 's/.*\/file\/d\/\([^\/]*\).*/\1/p')
+          [ -z "$ID" ] && ID=$(echo "$URL" | sed -n 's/.*[?&]id=\([^&]*\).*/\1/p')
+          if [ -n "$ID" ]; then
+            gdown "$ID" -O scmusicplus.deb
+          else
+            wget "$URL" --quiet --no-verbose -O scmusicplus.deb
           fi
-          echo "Téléchargement de : $DEB_URL"
-          wget "$DEB_URL" --quiet --no-verbose -O scmusicplus.deb
+          ls -la scmusicplus.deb
           case "$(file --mime-type -b scmusicplus.deb)" in
-            application/vnd.debian.binary-package|application/x-debian-package) ;;
-            *) echo "::error::Not a valid .deb"; exit 1 ;;
+            application/vnd.debian.binary-package|application/x-debian-package|application/octet-stream) ;;
+            *) echo "::error::Not a valid .deb (type: $(file --mime-type -b scmusicplus.deb))"; exit 1 ;;
           esac
 
       - name: Download Cyan
