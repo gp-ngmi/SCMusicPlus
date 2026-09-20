@@ -1,0 +1,106 @@
+name: Build SoundCloud + SCMusicPlus
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'URL directe de l''IPA SoundCloud DÉCHIFFRÉ (lien Google Drive ou direct)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Tag de la release (ex: 8.73.0)'
+        required: true
+        default: '8.73.0'
+        type: string
+      remove_extensions:
+        description: 'Supprimer les extensions (App Extensions, Watch) - réduit la taille'
+        required: true
+        default: true
+        type: boolean
+      draft_release:
+        description: 'Créer la release en brouillon'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    name: Build SCMusicPlus IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Download and Validate IPA
+        run: |
+          python3 -m pip install --break-system-packages gdown
+          URL="${{ inputs.ipa_url }}"
+          ID=$(echo "$URL" | sed -n 's/.*\/file\/d\/\([^\/]*\).*/\1/p')
+          [ -z "$ID" ] && ID=$(echo "$URL" | sed -n 's/.*[?&]id=\([^&]*\).*/\1/p')
+          if [ -n "$ID" ]; then
+            gdown "$ID" -O soundcloud.ipa
+          else
+            wget "$URL" --quiet --no-verbose -O soundcloud.ipa
+          fi
+          case "$(file --mime-type -b soundcloud.ipa)" in
+            application/zip|application/x-ios-app) ;;
+            *) echo "::error::Not an IPA"; exit 1 ;;
+          esac
+
+      - name: Get SoundCloud Version
+        run: |
+          unzip -q soundcloud.ipa -d Payload_tmp
+          APP_PATH=$(find Payload_tmp/Payload -name "*.app" -maxdepth 2 | head -1)
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Info.plist")
+          echo "SC_VERSION=$VERSION" >> $GITHUB_ENV
+          rm -rf Payload_tmp
+
+      - name: Download SCMusicPlus Tweak (rootless)
+        run: |
+          # Récupère l'URL du .deb rootless depuis la dernière release de waruhachi/SCMusicPlus
+          DEB_URL=$(curl -s https://api.github.com/repos/waruhachi/SCMusicPlus/releases/latest \
+            | grep "browser_download_url" \
+            | grep "iphoneos-arm64" \
+            | grep -v "arm64e" \
+            | cut -d '"' -f 4)
+          if [ -z "$DEB_URL" ]; then
+            echo "::error::Impossible de trouver le .deb rootless dans la release"
+            exit 1
+          fi
+          echo "Téléchargement de : $DEB_URL"
+          wget "$DEB_URL" --quiet --no-verbose -O scmusicplus.deb
+          case "$(file --mime-type -b scmusicplus.deb)" in
+            application/vnd.debian.binary-package|application/x-debian-package) ;;
+            *) echo "::error::Not a valid .deb"; exit 1 ;;
+          esac
+
+      - name: Download Cyan
+      # Vérifie la dernière version sur https://github.com/qwertyuiop1379/Tweaks/releases
+        run: wget https://github.com/qwertyuiop1379/Tweaks/releases/download/v1.7/cyan --quiet --no-verbose
+
+      - name: Prepare Cyan
+        run: chmod +x cyan
+
+      - name: Inject SCMusicPlus into IPA
+        run: |
+          if [ "${{ inputs.remove_extensions }}" == "true" ]; then
+            ./cyan -i soundcloud.ipa -o SoundCloudPlus.ipa -uwesf scmusicplus.deb -n "SoundCloud+"
+          else
+            ./cyan -i soundcloud.ipa -o SoundCloudPlus.ipa -cduwef scmusicplus.deb -n "SoundCloud+"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SoundCloudPlus.ipa
+          name: SoundCloudPlus v${{ env.SC_VERSION }} (SCMusicPlus)
+          body: |
+            SoundCloud version: ${{ env.SC_VERSION }}
+            Tweak: SCMusicPlus (latest rootless)
+            - Ads removed
+            - Promoted playlists removed
+            - Upsell buttons removed
+
+            Note: utilise un DNS filter (ex: NextDNS) pour bloquer 'ads.soundcloud.com' afin de bloquer toutes les pubs.
+          tag_name: ${{ inputs.release_tag }}
+          draft: ${{ inputs.draft_release }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
