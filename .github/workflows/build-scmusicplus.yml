@@ -73,19 +73,15 @@ jobs:
             *) echo "::error::Not a valid .deb (type: $(file --mime-type -b scmusicplus.deb))"; exit 1 ;;
           esac
 
-      - name: Download Cyan
-      # Vérifie la dernière version sur https://github.com/qwertyuiop1379/Tweaks/releases
-        run: wget https://github.com/qwertyuiop1379/Tweaks/releases/download/v1.7/cyan --quiet --no-verbose
-
-      - name: Prepare Cyan
-        run: chmod +x cyan
+      - name: Install pyzule
+        run: python3 -m pip install --break-system-packages pyzule
 
       - name: Inject SCMusicPlus into IPA
         run: |
           if [ "${{ inputs.remove_extensions }}" == "true" ]; then
-            ./cyan -i soundcloud.ipa -o SoundCloudPlus.ipa -uwesf scmusicplus.deb -n "SoundCloud+"
+            pyzule -i soundcloud.ipa -o SoundCloudPlus.ipa -f scmusicplus.deb -n "SoundCloud+" -u -w -m
           else
-            ./cyan -i soundcloud.ipa -o SoundCloudPlus.ipa -cduwef scmusicplus.deb -n "SoundCloud+"
+            pyzule -i soundcloud.ipa -o SoundCloudPlus.ipa -f scmusicplus.deb -n "SoundCloud+" -u -c -d -m
           fi
 
       - name: Create GitHub Release
