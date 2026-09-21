@@ -8,25 +8,21 @@ on:
         default: ""
         required: true
         type: string
-
       deb_url:
         description: "URL to the SCMusicPlus .deb (leave empty for latest release)"
         default: ""
         required: false
         type: string
-
       display_name:
         description: "App Name (Optional)"
         default: "SoundCloud+"
         required: true
         type: string
-
       bundle_id:
         description: "Bundle ID (Optional)"
         default: "com.soundcloud.TouchApp"
         required: true
         type: string
-
       remove_extensions:
         description: "Remove app extensions (Watch, etc.)"
         default: true
@@ -88,6 +84,26 @@ jobs:
             wget "$URL" --quiet --no-verbose -O scmusicplus.deb
           fi
           ls -la scmusicplus.deb
+
+      - name: Strip Broken Signature From Tweak
+        run: |
+          brew install dpkg
+          rm -rf debwork && mkdir -p debwork/root
+          dpkg-deb -x scmusicplus.deb debwork/root
+          dpkg-deb -e scmusicplus.deb debwork/root/DEBIAN
+          DYLIB=$(find debwork/root -name "*.dylib" | head -n 1)
+          echo "Found dylib: $DYLIB"
+          if [ -z "$DYLIB" ]; then
+            echo "::error::No dylib found inside the deb!"
+            find debwork/root -type f
+            exit 1
+          fi
+          codesign --remove-signature "$DYLIB" 2>/dev/null || true
+          codesign --force --sign - "$DYLIB"
+          codesign -dv "$DYLIB" 2>&1 | head -n 5
+          dpkg-deb -b debwork/root scmusicplus_fixed.deb
+          mv scmusicplus_fixed.deb scmusicplus.deb
+          rm -rf debwork
 
       - name: Install cyan and tbd
         run: |
